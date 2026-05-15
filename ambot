@@ -18,6 +18,19 @@ local tracerName = "ESP_TRACER"
 local enemyColor = Color3.fromRGB(255, 0, 0)   -- Địch: Đỏ
 local teamColor = Color3.fromRGB(0, 255, 0)    -- Đồng đội: Xanh lá
 
+-- Cấu hình nâng cao cho hệ thống Aimbot mới ghép
+local fovRadius = 150 -- Độ rộng của vòng tròn ngắm bắn (pixel)
+local smoothing = 0.15 -- Độ mượt mà khi di tâm (càng nhỏ càng mượt và an toàn)
+
+-- Khởi tạo vòng FOV ẩn danh qua Drawing API
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 1.5
+FOVCircle.Color = enemyColor
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.7
+FOVCircle.Visible = aimbotEnabled
+FOVCircle.Radius = fovRadius
+
 -- ====================================================================
 -- 0. HỆ THỐNG ANTI-BAN CHẠY NGẦM BẢO VỆ TÀI KHOẢN
 -- ====================================================================
@@ -155,6 +168,7 @@ end)
 
 AimBtn.MouseButton1Click:Connect(function()
     aimbotEnabled = not aimbotEnabled
+    FOVCircle.Visible = aimbotEnabled
     AimBtn.Text = "AIMBOT: " .. (aimbotEnabled and "ON" or "OFF")
     AimBtn.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
 end)
@@ -221,7 +235,7 @@ local function refreshPlayerESP(player)
     if not root then return end
     local targetColor = getPlayerColor(player)
 
-    -- Xử lý nút bật/tắt Khung nhìn xuyên tường độc lập
+    -- Xử lý bật/tắt Khung nhìn xuyên tường (Highlight Box)
     local hl = char:FindFirstChild(espName)
     if espBoxEnabled then
         if not hl then
@@ -238,7 +252,7 @@ local function refreshPlayerESP(player)
         if hl then hl.Enabled = false end
     end
 
-    -- Xử lý nút bật/tắt Dây nối độc lập
+    -- Xử lý bật/tắt Dây nối vị trí (Tracers Beam)
     local beam = char:FindFirstChild(tracerName)
     if espTracerEnabled then
         local localAttach = getLocalAttachment()
@@ -269,7 +283,7 @@ local function refreshPlayerESP(player)
     end
 end
 
--- Vòng lặp cập nhật ESP liên tục
+-- Vòng lặp quét làm mới ESP ngầm (Giảm tần suất tránh lag máy)
 task.spawn(function()
     while true do
         for _, p in ipairs(Players:GetPlayers()) do
@@ -280,13 +294,15 @@ task.spawn(function()
 end)
 
 -- ====================================================================
--- 3. HỆ THỐNG AIMBOT (KHÓA TÂM TỰ ĐỘNG)
+-- 3. HỆ THỐNG ĐỊNH VỊ VÀ KHÓA TÂM THEO VÒNG FOV MƯỢT MÀ
 -- ====================================================================
-local function getClosestEnemy()
+local function getClosestEnemyInFOV()
     local closestPlayer = nil
-    local shortestDistance = math.huge
+    local shortestDistance = fovRadius
+    local mousePos = UserInputService:GetMouseLocation()
 
     for _, player in ipairs(Players:GetPlayers()) do
+        -- Lọc bỏ bản thân, đồng đội và người chơi đã chết
         if player ~= LocalPlayer and player.Character and (not player.Team or player.Team ~= LocalPlayer.Team) then
             local char = player.Character
             local head = char:FindFirstChild("Head")
@@ -295,8 +311,10 @@ local function getClosestEnemy()
             if head and humanoid and humanoid.Health > 0 then
                 local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
                 if onScreen then
-                    local mousePos = UserInputService:GetMouseLocation()
-                    local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    local targetScreenPos = Vector2.new(screenPos.X, screenPos.Y)
+                    local distance = (targetScreenPos - mousePos).Magnitude
+                    
+                    -- Chỉ khóa tâm nếu mục tiêu nằm trong bán kính vòng tròn FOV
                     if distance < shortestDistance then
                         shortestDistance = distance
                         closestPlayer = player
@@ -308,12 +326,18 @@ local function getClosestEnemy()
     return closestPlayer
 end
 
--- Đồng bộ khóa tâm ngắm theo thời gian thực (RenderStepped)
+-- RenderStepped xử lý hoạt họa di chuyển vòng FOV và bám tâm mục tiêu theo thời gian thực
 RunService.RenderStepped:Connect(function()
-    if aimbotEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then -- Giữ chuột phải để ngắm
-        local target = getClosestEnemy()
+    local mousePos = UserInputService:GetMouseLocation()
+    FOVCircle.Position = mousePos
+
+    -- Chỉ hoạt động khi nút AIMBOT trên Menu bật VÀ đang GIỮ CHUỘT PHẢI
+    if aimbotEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local target = getClosestEnemyInFOV()
         if target and target.Character and target.Character:FindFirstChild("Head") then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+            local targetPos = target.Character.Head.Position
+            -- Cơ chế Lerp tạo độ mượt (Smoothing) giúp tâm ngắm di chuyển tự nhiên giống người thật hơn
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, targetPos), smoothing)
         end
     end
 end)
