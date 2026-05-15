@@ -6,7 +6,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- Biến cấu hình trạng thái độc lập
+-- Biến trạng thái bật/tắt riêng biệt cho từng nút
 local espBoxEnabled = true
 local espTracerEnabled = true
 local aimbotEnabled = true
@@ -14,17 +14,49 @@ local aimbotEnabled = true
 local espName = "ESP_HIGHLIGHT"
 local tracerName = "ESP_TRACER"
 
--- Cấu hình màu sắc
-local enemyColor = Color3.fromRGB(255, 0, 0)
-local teamColor = Color3.fromRGB(0, 255, 0)
+-- Cấu hình màu sắc theo đội
+local enemyColor = Color3.fromRGB(255, 0, 0)   -- Địch: Đỏ
+local teamColor = Color3.fromRGB(0, 255, 0)    -- Đồng đội: Xanh lá
 
--- Tự động dọn dẹp menu cũ tránh xung đột đè mã
+-- ====================================================================
+-- 0. HỆ THỐNG ANTI-BAN CHẠY NGẦM BẢO VỆ TÀI KHOẢN
+-- ====================================================================
+local function initAntiBan()
+    local metatable = getrawmetatable(game)
+    if not metatable then return end
+    
+    setreadonly(metatable, false)
+    local oldNamecall = metatable.__namecall
+    local oldIndex = metatable.__index
+
+    metatable.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if method == "ReportAbuse" or method == "SubmitScreenshot" then return nil end
+        if tostring(self) == "CrashReporter" or tostring(self) == "AnalyticsService" then return nil end
+        return oldNamecall(self, ...)
+    end)
+
+    metatable.__index = newcclosure(function(self, key)
+        if not checkcaller() then
+            if key == "Name" and (self.Name == "ESP_Menu_Gui_Fixed" or self.Name == espName or self.Name == tracerName) then
+                return "Instance"
+            end
+        end
+        return oldIndex(self, key)
+    end)
+    
+    setreadonly(metatable, true)
+end
+
+pcall(initAntiBan)
+
+-- Xóa UI cũ nếu bị trùng lặp tránh lỗi đè giao diện
 if CoreGui:FindFirstChild("ESP_Menu_Gui_Fixed") then
     CoreGui["ESP_Menu_Gui_Fixed"]:Destroy()
 end
 
 -- ====================================================================
--- 1. GIAO DIỆN ĐIỀU KHIỂN (COREGUI)
+-- 1. GIAO DIỆN MENU ĐIỀU KHIỂN RIÊNG BIỆT (COREGUI)
 -- ====================================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ESP_Menu_Gui_Fixed"
@@ -33,8 +65,8 @@ ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 180, 0, 170)
-MainFrame.Position = UDim2.new(0.15, 0, 0.25, 0)
+MainFrame.Size = UDim2.new(0, 180, 0, 200)
+MainFrame.Position = UDim2.new(0.3, 0, 0.3, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -45,17 +77,28 @@ FrameCorner.CornerRadius = UDim.new(0, 8)
 FrameCorner.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 35)
+Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundTransparency = 1
-Title.Text = "STABLE MULTI-MENU"
+Title.Text = "COMBINED CHEATS"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 14
 Title.Parent = MainFrame
 
+local AntiBanStatus = Instance.new("TextLabel")
+AntiBanStatus.Size = UDim2.new(1, 0, 0, 20)
+AntiBanStatus.Position = UDim2.new(0, 0, 0.14, 0)
+AntiBanStatus.BackgroundTransparency = 1
+AntiBanStatus.Text = "🛡️ Safe Anti-Ban Active"
+AntiBanStatus.TextColor3 = Color3.fromRGB(0, 255, 255)
+AntiBanStatus.Font = Enum.Font.SourceSansItalic
+AntiBanStatus.TextSize = 12
+AntiBanStatus.Parent = MainFrame
+
+-- NÚT 1: Bật/Tắt Khung Box ESP
 local BoxBtn = Instance.new("TextButton")
 BoxBtn.Size = UDim2.new(0.85, 0, 0, 30)
-BoxBtn.Position = UDim2.new(0.075, 0, 0.25, 0)
+BoxBtn.Position = UDim2.new(0.075, 0, 0.26, 0)
 BoxBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
 BoxBtn.Text = "BOX ESP: ON"
 BoxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -67,6 +110,7 @@ local BoxCorner = Instance.new("UICorner")
 BoxCorner.CornerRadius = UDim.new(0, 5)
 BoxCorner.Parent = BoxBtn
 
+-- NÚT 2: Bật/Tắt Dây Nối Tracers
 local TracerBtn = Instance.new("TextButton")
 TracerBtn.Size = UDim2.new(0.85, 0, 0, 30)
 TracerBtn.Position = UDim2.new(0.075, 0, 0.50, 0)
@@ -81,9 +125,10 @@ local TracerCorner = Instance.new("UICorner")
 TracerCorner.CornerRadius = UDim.new(0, 5)
 TracerCorner.Parent = TracerBtn
 
+-- NÚT 3: Bật/Tắt Khóa Tâm Aimbot
 local AimBtn = Instance.new("TextButton")
 AimBtn.Size = UDim2.new(0.85, 0, 0, 30)
-AimBtn.Position = UDim2.new(0.075, 0, 0.75, 0)
+AimBtn.Position = UDim2.new(0.075, 0, 0.74, 0)
 AimBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
 AimBtn.Text = "AIMBOT: ON"
 AimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -95,25 +140,43 @@ local AimCorner = Instance.new("UICorner")
 AimCorner.CornerRadius = UDim.new(0, 5)
 AimCorner.Parent = AimBtn
 
--- Hỗ trợ di chuyển Menu mượt mà chống kẹt đứng hình
-local dragging, dragStart, startPos
+-- Logic xử lý sự kiện bấm nút UI
+BoxBtn.MouseButton1Click:Connect(function()
+    espBoxEnabled = not espBoxEnabled
+    BoxBtn.Text = "BOX ESP: " .. (espBoxEnabled and "ON" or "OFF")
+    BoxBtn.BackgroundColor3 = espBoxEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+end)
+
+TracerBtn.MouseButton1Click:Connect(function()
+    espTracerEnabled = not espTracerEnabled
+    TracerBtn.Text = "TRACERS: " .. (espTracerEnabled and "ON" or "OFF")
+    TracerBtn.BackgroundColor3 = espTracerEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+end)
+
+AimBtn.MouseButton1Click:Connect(function()
+    aimbotEnabled = not aimbotEnabled
+    AimBtn.Text = "AIMBOT: " .. (aimbotEnabled and "ON" or "OFF")
+    AimBtn.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+end)
+
+-- Logic xử lý di chuyển bảng menu bằng cách vuốt/kéo
+local dragging, dragInput, dragStart, startPos
 MainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true; dragStart = input.Position; startPos = MainFrame.Position
+        input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
     end
 end)
+MainFrame.InputChanged:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end end)
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+    if input == dragInput and dragging then
         local delta = input.Position - dragStart
         MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
-end)
 
 -- ====================================================================
--- 2. HỆ THỐNG ESP (KHUNG XUYÊN TƯỜNG & DÂY NỐI CHỐNG LAG)
+-- 2. HỆ THỐNG QUÉT VÀ HIỂN THỊ ESP ĐỒNG BỘ THEO ĐỘI
 -- ====================================================================
 local function getLocalAttachment()
     local char = LocalPlayer.Character
@@ -132,7 +195,9 @@ local function getLocalAttachment()
 end
 
 local function getPlayerColor(player)
-    if player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then return teamColor end
+    if player.Team and LocalPlayer.Team then
+        if player.Team == LocalPlayer.Team then return teamColor end
+    end
     return enemyColor
 end
 
@@ -144,22 +209,25 @@ local function refreshPlayerESP(player)
     local root = char:FindFirstChild("HumanoidRootPart")
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     
+    -- Tự dọn dẹp dữ liệu cũ khi đối thủ chết hẳn
     if humanoid and humanoid.Health <= 0 then
-        if char:FindFirstChild(espName) then char[espName]:Destroy() end
-        if char:FindFirstChild(tracerName) then char[tracerName]:Destroy() end
+        local oldHl = char:FindFirstChild(espName)
+        local oldBeam = char:FindFirstChild(tracerName)
+        if oldHl then oldHl:Destroy() end
+        if oldBeam then oldBeam:Destroy() end
         return
     end
 
     if not root then return end
     local targetColor = getPlayerColor(player)
 
-    -- Quản lý Box ESP
+    -- Xử lý nút bật/tắt Khung nhìn xuyên tường độc lập
     local hl = char:FindFirstChild(espName)
     if espBoxEnabled then
         if not hl then
             hl = Instance.new("Highlight")
             hl.Name = espName
-            hl.FillTransparency = 0.6 -- Tăng độ trong suốt để giảm tải đồ họa
+            hl.FillTransparency = 0.5
             hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
             hl.Parent = char
         end
@@ -170,75 +238,68 @@ local function refreshPlayerESP(player)
         if hl then hl.Enabled = false end
     end
 
-    -- Quản lý Tracers
+    -- Xử lý nút bật/tắt Dây nối độc lập
     local beam = char:FindFirstChild(tracerName)
     if espTracerEnabled then
-        local targetAttach = root:FindFirstChild("TracerTargetAttachment") or Instance.new("Attachment")
-        targetAttach.Name = "TracerTargetAttachment"
-        targetAttach.Position = Vector3.new(0, -2, 0)
-        targetAttach.Parent = root
-
-        if not beam then
-            beam = Instance.new("Beam")
-            beam.Name = tracerName
-            beam.Width0 = 0.03
-            beam.Width1 = 0.03
-            beam.FaceCamera = true
-            beam.Attachment1 = targetAttach
-            beam.Parent = char
+        local localAttach = getLocalAttachment()
+        local targetAttach = root:FindFirstChild("TracerTargetAttachment")
+        if not targetAttach then
+            targetAttach = Instance.new("Attachment")
+            targetAttach.Name = "TracerTargetAttachment"
+            targetAttach.Position = Vector3.new(0, -2, 0)
+            targetAttach.Parent = root
         end
-        beam.Color = ColorSequence.new(targetColor)
-
-        local myAttach = getLocalAttachment()
-        if myAttach then
-            beam.Attachment0 = myAttach
+        
+        if localAttach and targetAttach then
+            if not beam then
+                beam = Instance.new("Beam")
+                beam.Name = tracerName
+                beam.Width0 = 0.05
+                beam.Width1 = 0.05
+                beam.FaceCamera = true
+                beam.Attachment0 = localAttach
+                beam.Attachment1 = targetAttach
+                beam.Parent = char
+            end
+            beam.Color = ColorSequence.new(targetColor)
             beam.Enabled = true
-        else
-            beam.Enabled = false
         end
     else
         if beam then beam.Enabled = false end
     end
 end
 
--- Tăng thời gian chờ quét lên 0.6 giây để Triệt Tiêu Hoàn Toàn LAG
+-- Vòng lặp cập nhật ESP liên tục
 task.spawn(function()
     while true do
-        for _, p in pairs(Players:GetPlayers()) do
-            pcall(function() refreshPlayerESP(p) end)
+        for _, p in ipairs(Players:GetPlayers()) do
+            pcall(refreshPlayerESP, p)
         end
-        task.wait(0.6)
+        task.wait(0.1)
     end
 end)
 
 -- ====================================================================
--- 3. HỆ THỐNG AIMBOT TỰ ĐỘNG MƯỢT MÀ CHỐNG ĐỨNG HÌNH (SMOOTH LOCK)
+-- 3. HỆ THỐNG AIMBOT (KHÓA TÂM TỰ ĐỘNG)
 -- ====================================================================
--- Hàm tìm kiếm mục tiêu thông minh (Hỗ trợ quét cả tên bộ phận biến thể của game khác)
-local function getTargetPart(character)
-    return character:FindFirstChild("Head") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("HumanoidRootPart")
-end
-
 local function getClosestEnemy()
     local closestPlayer = nil
     local shortestDistance = math.huge
 
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            if p.Team and LocalPlayer.Team and p.Team == LocalPlayer.Team then continue end
-            local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health <= 0 then continue end
-
-            local aimTarget = getTargetPart(p.Character)
-            if aimTarget then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(aimTarget.Position)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and (not player.Team or player.Team ~= LocalPlayer.Team) then
+            local char = player.Character
+            local head = char:FindFirstChild("Head")
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            
+            if head and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
                 if onScreen then
                     local mousePos = UserInputService:GetMouseLocation()
-                    local distToCenter = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-
-                    if distToCenter < shortestDistance then
-                        shortestDistance = distToCenter
-                        closestPlayer = p
+                    local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestPlayer = player
                     end
                 end
             end
@@ -247,68 +308,12 @@ local function getClosestEnemy()
     return closestPlayer
 end
 
-local isAiming = false
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = true end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = false end
-end)
-
--- Tạo nút LOCK thông minh dành riêng cho Mobile
-if UserInputService.TouchEnabled then
-    local MobileAimBtn = Instance.new("TextButton")
-    MobileAimBtn.Size = UDim2.new(0, 55, 0, 55)
-    MobileAimBtn.Position = UDim2.new(0.8, 0, 0.35, 0)
-    MobileAimBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-    MobileAimBtn.Text = "LOCK"
-    MobileAimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MobileAimBtn.Font = Enum.Font.SourceSansBold
-    MobileAimBtn.TextSize = 13
-    MobileAimBtn.Parent = ScreenGui
-    
-    local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(1, 0)
-    Corner.Parent = MobileAimBtn
-
-    MobileAimBtn.MouseButton1Down:Connect(function()
-        isAiming = not isAiming
-        MobileAimBtn.BackgroundColor3 = isAiming and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(200, 0, 0)
-    end)
-end
-
--- Sử dụng nội suy CFrame để khóa tâm cực kỳ mượt mà, không bao giờ bị đơ đứng hình
+-- Đồng bộ khóa tâm ngắm theo thời gian thực (RenderStepped)
 RunService.RenderStepped:Connect(function()
-    if aimbotEnabled and isAiming then
+    if aimbotEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then -- Giữ chuột phải để ngắm
         local target = getClosestEnemy()
-        if target and target.Character then
-            local aimTarget = getTargetPart(target.Character)
-            if aimTarget then
-                -- Hệ số mượt mà (0.25), tăng số này lên nếu bạn muốn khóa nhanh hơn
-                Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, aimTarget.Position), 0.25)
-            end
+        if target and target.Character and target.Character:FindFirstChild("Head") then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
         end
     end
-end)
-
--- ====================================================================
--- 4. LOGIC ĐIỀU KHIỂN CÁC NÚT BẤM
--- ====================================================================
-BoxBtn.MouseButton1Click:Connect(function()
-    espBoxEnabled = not espBoxEnabled
-    BoxBtn.Text = espBoxEnabled and "BOX ESP: ON" or "BOX ESP: OFF"
-    BoxBtn.BackgroundColor3 = espBoxEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-end)
-
-TracerBtn.MouseButton1Click:Connect(function()
-    espTracerEnabled = not espTracerEnabled
-    TracerBtn.Text = espTracerEnabled and "TRACERS: ON" or "TRACERS: OFF"
-    TracerBtn.BackgroundColor3 = espTracerEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-end)
-
-AimBtn.MouseButton1Click:Connect(function()
-    aimbotEnabled = not aimbotEnabled
-    AimBtn.Text = aimbotEnabled and "AIMBOT: ON" or "AIMBOT: OFF"
-    AimBtn.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
 end)
