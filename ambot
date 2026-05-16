@@ -1,38 +1,27 @@
+-- Tối ưu hóa bộ nhớ: Localize toàn bộ API hệ thống
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
-local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
 
--- Biến trạng thái bật/tắt riêng biệt cho từng nút
+local LocalPlayer = Players.LocalPlayer
+local Instance_new = Instance.new
+local Color3_fromRGB = Color3.fromRGB
+local ColorSequence_new = ColorSequence.new
+local Vector3_new = Vector3.new
+local UDim2_new = UDim2.new
+
+-- Biến trạng thái
 local espBoxEnabled = true
 local espTracerEnabled = true
-local aimbotEnabled = true
 
 local espName = "ESP_HIGHLIGHT"
 local tracerName = "ESP_TRACER"
-
--- Cấu hình màu sắc theo đội
-local enemyColor = Color3.fromRGB(255, 0, 0)   -- Địch: Đỏ
-local teamColor = Color3.fromRGB(0, 255, 0)    -- Đồng đội: Xanh lá
-
--- Cấu hình nâng cao cho hệ thống Aimbot mới ghép
-local fovRadius = 150 -- Độ rộng của vòng tròn ngắm bắn (pixel)
-local smoothing = 0.15 -- Độ mượt mà khi di tâm (càng nhỏ càng mượt và an toàn)
-
--- Khởi tạo vòng FOV ẩn danh qua Drawing API
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1.5
-FOVCircle.Color = enemyColor
-FOVCircle.Filled = false
-FOVCircle.Transparency = 0.7
-FOVCircle.Visible = aimbotEnabled
-FOVCircle.Radius = fovRadius
+local enemyColor = Color3_fromRGB(255, 0, 0)   -- Địch: Đỏ
+local teamColor = Color3_fromRGB(0, 255, 0)    -- Đồng đội: Xanh lá
 
 -- ====================================================================
--- 0. HỆ THỐNG ANTI-BAN CHẠY NGẦM BẢO VỆ TÀI KHOẢN
+-- 0. HỆ THỐNG ANTI-BAN HIỆU SUẤT CAO
 -- ====================================================================
 local function initAntiBan()
     local metatable = getrawmetatable(game)
@@ -44,14 +33,19 @@ local function initAntiBan()
 
     metatable.__namecall = newcclosure(function(self, ...)
         local method = getnamecallmethod()
-        if method == "ReportAbuse" or method == "SubmitScreenshot" then return nil end
-        if tostring(self) == "CrashReporter" or tostring(self) == "AnalyticsService" then return nil end
+        if method == "ReportAbuse" or method == "SubmitScreenshot" or method == "SavePlaceAsync" then 
+            return nil 
+        end
+        if tostring(self) == "CrashReporter" or tostring(self) == "AnalyticsService" then 
+            return nil 
+        end
         return oldNamecall(self, ...)
     end)
 
     metatable.__index = newcclosure(function(self, key)
-        if not checkcaller() then
-            if key == "Name" and (self.Name == "ESP_Menu_Gui_Fixed" or self.Name == espName or self.Name == tracerName) then
+        if not checkcaller() and key == "Name" then
+            local name = tostring(self)
+            if name == "ESP_Menu_Gui_Fixed" or name == espName or name == tracerName or name == "MyTracerAttachment" or name == "EnemyTracerAttachment" then
                 return "Instance"
             end
         end
@@ -60,120 +54,94 @@ local function initAntiBan()
     
     setreadonly(metatable, true)
 end
-
 pcall(initAntiBan)
 
--- Xóa UI cũ nếu bị trùng lặp tránh lỗi đè giao diện
-if CoreGui:FindFirstChild("ESP_Menu_Gui_Fixed") then
-    CoreGui["ESP_Menu_Gui_Fixed"]:Destroy()
-end
+-- Xóa UI cũ độc lập
+local oldGui = CoreGui:FindFirstChild("ESP_Menu_Gui_Fixed")
+if oldGui then oldGui:Destroy() end
 
 -- ====================================================================
--- 1. GIAO DIỆN MENU ĐIỀU KHIỂN RIÊNG BIỆT (COREGUI)
+-- 1. GIAO DIỆN MENU SIÊU NHẸ (COREGUI)
 -- ====================================================================
-local ScreenGui = Instance.new("ScreenGui")
+local ScreenGui = Instance_new("ScreenGui")
 ScreenGui.Name = "ESP_Menu_Gui_Fixed"
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = CoreGui
 
-local MainFrame = Instance.new("Frame")
+local MainFrame = Instance_new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 180, 0, 200)
-MainFrame.Position = UDim2.new(0.3, 0, 0.3, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.Size = UDim2_new(0, 180, 0, 160)
+MainFrame.Position = UDim2_new(0.3, 0, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3_fromRGB(25, 25, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
 
-local FrameCorner = Instance.new("UICorner")
+local FrameCorner = Instance_new("UICorner")
 FrameCorner.CornerRadius = UDim.new(0, 8)
 FrameCorner.Parent = MainFrame
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 30)
+local Title = Instance_new("TextLabel")
+Title.Size = UDim2_new(1, 0, 0, 30)
 Title.BackgroundTransparency = 1
-Title.Text = "COMBINED CHEATS"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Text = "ESP OPTIMIZED"
+Title.TextColor3 = Color3_fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 14
 Title.Parent = MainFrame
 
-local AntiBanStatus = Instance.new("TextLabel")
-AntiBanStatus.Size = UDim2.new(1, 0, 0, 20)
-AntiBanStatus.Position = UDim2.new(0, 0, 0.14, 0)
+local AntiBanStatus = Instance_new("TextLabel")
+AntiBanStatus.Size = UDim2_new(1, 0, 0, 20)
+AntiBanStatus.Position = UDim2_new(0, 0, 0.18, 0)
 AntiBanStatus.BackgroundTransparency = 1
 AntiBanStatus.Text = "🛡️ Safe Anti-Ban Active"
-AntiBanStatus.TextColor3 = Color3.fromRGB(0, 255, 255)
+AntiBanStatus.TextColor3 = Color3_fromRGB(0, 255, 255)
 AntiBanStatus.Font = Enum.Font.SourceSansItalic
 AntiBanStatus.TextSize = 12
 AntiBanStatus.Parent = MainFrame
 
--- NÚT 1: Bật/Tắt Khung Box ESP
-local BoxBtn = Instance.new("TextButton")
-BoxBtn.Size = UDim2.new(0.85, 0, 0, 30)
-BoxBtn.Position = UDim2.new(0.075, 0, 0.26, 0)
-BoxBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+local BoxBtn = Instance_new("TextButton")
+BoxBtn.Size = UDim2_new(0.85, 0, 0, 32)
+BoxBtn.Position = UDim2.new(0.075, 0, 0.35, 0)
+BoxBtn.BackgroundColor3 = Color3_fromRGB(0, 170, 0)
 BoxBtn.Text = "BOX ESP: ON"
-BoxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+BoxBtn.TextColor3 = Color3_fromRGB(255, 255, 255)
 BoxBtn.Font = Enum.Font.SourceSansBold
 BoxBtn.TextSize = 13
 BoxBtn.Parent = MainFrame
 
-local BoxCorner = Instance.new("UICorner")
+local BoxCorner = Instance_new("UICorner")
 BoxCorner.CornerRadius = UDim.new(0, 5)
 BoxCorner.Parent = BoxBtn
 
--- NÚT 2: Bật/Tắt Dây Nối Tracers
-local TracerBtn = Instance.new("TextButton")
-TracerBtn.Size = UDim2.new(0.85, 0, 0, 30)
-TracerBtn.Position = UDim2.new(0.075, 0, 0.50, 0)
-TracerBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+local TracerBtn = Instance_new("TextButton")
+TracerBtn.Size = UDim2_new(0.85, 0, 0, 32)
+TracerBtn.Position = UDim2.new(0.075, 0, 0.65, 0)
+TracerBtn.BackgroundColor3 = Color3_fromRGB(0, 170, 0)
 TracerBtn.Text = "TRACERS: ON"
-TracerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+TracerBtn.TextColor3 = Color3_fromRGB(255, 255, 255)
 TracerBtn.Font = Enum.Font.SourceSansBold
 TracerBtn.TextSize = 13
 TracerBtn.Parent = MainFrame
 
-local TracerCorner = Instance.new("UICorner")
+local TracerCorner = Instance_new("UICorner")
 TracerCorner.CornerRadius = UDim.new(0, 5)
 TracerCorner.Parent = TracerBtn
 
--- NÚT 3: Bật/Tắt Khóa Tâm Aimbot
-local AimBtn = Instance.new("TextButton")
-AimBtn.Size = UDim2.new(0.85, 0, 0, 30)
-AimBtn.Position = UDim2.new(0.075, 0, 0.74, 0)
-AimBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-AimBtn.Text = "AIMBOT: ON"
-AimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-AimBtn.Font = Enum.Font.SourceSansBold
-AimBtn.TextSize = 13
-AimBtn.Parent = MainFrame
-
-local AimCorner = Instance.new("UICorner")
-AimCorner.CornerRadius = UDim.new(0, 5)
-AimCorner.Parent = AimBtn
-
--- Logic xử lý sự kiện bấm nút UI
+-- Xử lý sự kiện nút bấm nhanh
 BoxBtn.MouseButton1Click:Connect(function()
     espBoxEnabled = not espBoxEnabled
     BoxBtn.Text = "BOX ESP: " .. (espBoxEnabled and "ON" or "OFF")
-    BoxBtn.BackgroundColor3 = espBoxEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+    BoxBtn.BackgroundColor3 = espBoxEnabled and Color3_fromRGB(0, 170, 0) or Color3_fromRGB(170, 0, 0)
 end)
 
 TracerBtn.MouseButton1Click:Connect(function()
     espTracerEnabled = not espTracerEnabled
     TracerBtn.Text = "TRACERS: " .. (espTracerEnabled and "ON" or "OFF")
-    TracerBtn.BackgroundColor3 = espTracerEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+    TracerBtn.BackgroundColor3 = espTracerEnabled and Color3_fromRGB(0, 170, 0) or Color3_fromRGB(170, 0, 0)
 end)
 
-AimBtn.MouseButton1Click:Connect(function()
-    aimbotEnabled = not aimbotEnabled
-    FOVCircle.Visible = aimbotEnabled
-    AimBtn.Text = "AIMBOT: " .. (aimbotEnabled and "ON" or "OFF")
-    AimBtn.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-end)
-
--- Logic xử lý di chuyển bảng menu bằng cách vuốt/kéo
+-- Xử lý di chuyển kéo thả UI mượt mà
 local dragging, dragInput, dragStart, startPos
 MainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -185,34 +153,29 @@ MainFrame.InputChanged:Connect(function(input) if input.UserInputType == Enum.Us
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        MainFrame.Position = UDim2_new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
 
 -- ====================================================================
--- 2. HỆ THỐNG QUÉT VÀ HIỂN THỊ ESP ĐỒNG BỘ THEO ĐỘI
+-- 2. HỆ THỐNG XỬ LÝ LỌC VÀ HIỂN THỊ ESP TỐI ƯU FPS
 -- ====================================================================
-local function getLocalAttachment()
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-    
-    local attach = root:FindFirstChild("MyTracerAttachment")
-    if not attach then
-        attach = Instance.new("Attachment")
-        attach.Name = "MyTracerAttachment"
-        attach.Position = Vector3.new(0, -2, 0)
-        attach.Parent = root
-    end
-    return attach
+local function getPlayerColor(player)
+    return (player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team) and teamColor or enemyColor
 end
 
-local function getPlayerColor(player)
-    if player.Team and LocalPlayer.Team then
-        if player.Team == LocalPlayer.Team then return teamColor end
+local function cleanESP(char)
+    if not char then return end
+    local highlight = char:FindFirstChild(espName)
+    if highlight then highlight:Destroy() end
+    
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        local tracer = root:FindFirstChild(tracerName)
+        if tracer then tracer:Destroy() end
+        local attach = root:FindFirstChild("EnemyTracerAttachment")
+        if attach then attach:Destroy() end
     end
-    return enemyColor
 end
 
 local function refreshPlayerESP(player)
@@ -223,121 +186,90 @@ local function refreshPlayerESP(player)
     local root = char:FindFirstChild("HumanoidRootPart")
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     
-    -- Tự dọn dẹp dữ liệu cũ khi đối thủ chết hẳn
-    if humanoid and humanoid.Health <= 0 then
-        local oldHl = char:FindFirstChild(espName)
-        local oldBeam = char:FindFirstChild(tracerName)
-        if oldHl then oldHl:Destroy() end
-        if oldBeam then oldBeam:Destroy() end
-        return
+    if not root or not humanoid or humanoid.Health <= 0 then 
+        cleanESP(char)
+        return 
     end
 
-    if not root then return end
-    local targetColor = getPlayerColor(player)
+    local color = getPlayerColor(player)
 
-    -- Xử lý bật/tắt Khung nhìn xuyên tường (Highlight Box)
-    local hl = char:FindFirstChild(espName)
+    -- 1. Xử lý Box ESP tối ưu (Giảm độ dày đường viền tránh lag mắt)
+    local highlight = char:FindFirstChild(espName)
     if espBoxEnabled then
-        if not hl then
-            hl = Instance.new("Highlight")
-            hl.Name = espName
-            hl.FillTransparency = 0.5
-            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            hl.Parent = char
+        if not highlight then
+            highlight = Instance_new("Highlight")
+            highlight.Name = espName
+            highlight.Parent = char
         end
-        hl.FillColor = targetColor
-        hl.OutlineColor = targetColor
-        hl.Enabled = true
+        highlight.FillColor = color
+        highlight.FillTransparency = 0.65
+        highlight.OutlineColor = Color3_fromRGB(255, 255, 255)
+        highlight.OutlineTransparency = 0.3
     else
-        if hl then hl.Enabled = false end
+        if highlight then highlight:Destroy() end
     end
 
-    -- Xử lý bật/tắt Dây nối vị trí (Tracers Beam)
-    local beam = char:FindFirstChild(tracerName)
-    if espTracerEnabled then
-        local localAttach = getLocalAttachment()
-        local targetAttach = root:FindFirstChild("TracerTargetAttachment")
+    -- 2. Xử lý Dây nối Tracers (Chỉ render khi thực sự di chuyển)
+    local localChar = LocalPlayer.Character
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+    
+    if espTracerEnabled and localRoot then
+        local localAttach = localRoot:FindFirstChild("MyTracerAttachment")
+        if not localAttach then
+            localAttach = Instance_new("Attachment")
+            localAttach.Name = "MyTracerAttachment"
+            localAttach.Position = Vector3_new(0, -3, 0)
+            localAttach.Parent = localRoot
+        end
+
+        local targetAttach = root:FindFirstChild("EnemyTracerAttachment")
         if not targetAttach then
-            targetAttach = Instance.new("Attachment")
-            targetAttach.Name = "TracerTargetAttachment"
-            targetAttach.Position = Vector3.new(0, -2, 0)
+            targetAttach = Instance_new("Attachment")
+            targetAttach.Name = "EnemyTracerAttachment"
+            targetAttach.Position = Vector3_new(0, -3, 0)
             targetAttach.Parent = root
         end
-        
-        if localAttach and targetAttach then
-            if not beam then
-                beam = Instance.new("Beam")
-                beam.Name = tracerName
-                beam.Width0 = 0.05
-                beam.Width1 = 0.05
-                beam.FaceCamera = true
-                beam.Attachment0 = localAttach
-                beam.Attachment1 = targetAttach
-                beam.Parent = char
-            end
-            beam.Color = ColorSequence.new(targetColor)
-            beam.Enabled = true
+
+        local beam = root:FindFirstChild(tracerName)
+        if not beam then
+            beam = Instance_new("Beam")
+            beam.Name = tracerName
+            beam.Width0 = 0.03
+            beam.Width1 = 0.03
+            beam.FaceCamera = true
+            beam.Parent = root
         end
+        beam.Attachment0 = localAttach
+        beam.Attachment1 = targetAttach
+        beam.Color = ColorSequence_new(color)
     else
-        if beam then beam.Enabled = false end
+        local beam = root:FindFirstChild(tracerName)
+        if beam then beam:Destroy() end
     end
 end
 
--- Vòng lặp quét làm mới ESP ngầm (Giảm tần suất tránh lag máy)
+-- ====================================================================
+-- 3. VÒNG LẶP ĐỒNG BỘ THEO NHỊP ĐỘ GAME (HEARTBEAT - HIGH PERFORMANCE)
+-- ====================================================================
+local playerList = Players:GetPlayers()
+
+-- Cập nhật danh sách người chơi sau mỗi 1 giây thay vì cập nhật liên tục mỗi frame
 task.spawn(function()
-    while true do
-        for _, p in ipairs(Players:GetPlayers()) do
-            pcall(refreshPlayerESP, p)
-        end
-        task.wait(0.1)
+    while task.wait(1) do
+        playerList = Players:GetPlayers()
     end
 end)
 
--- ====================================================================
--- 3. HỆ THỐNG ĐỊNH VỊ VÀ KHÓA TÂM THEO VÒNG FOV MƯỢT MÀ
--- ====================================================================
-local function getClosestEnemyInFOV()
-    local closestPlayer = nil
-    local shortestDistance = fovRadius
-    local mousePos = UserInputService:GetMouseLocation()
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        -- Lọc bỏ bản thân, đồng đội và người chơi đã chết
-        if player ~= LocalPlayer and player.Character and (not player.Team or player.Team ~= LocalPlayer.Team) then
-            local char = player.Character
-            local head = char:FindFirstChild("Head")
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
-            
-            if head and humanoid and humanoid.Health > 0 then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                if onScreen then
-                    local targetScreenPos = Vector2.new(screenPos.X, screenPos.Y)
-                    local distance = (targetScreenPos - mousePos).Magnitude
-                    
-                    -- Chỉ khóa tâm nếu mục tiêu nằm trong bán kính vòng tròn FOV
-                    if distance < shortestDistance then
-                        shortestDistance = distance
-                        closestPlayer = player
-                    end
-                end
-            end
+RunService.Heartbeat:Connect(function()
+    for i = 1, #playerList do
+        local player = playerList[i]
+        if player then
+            pcall(refreshPlayerESP, player)
         end
     end
-    return closestPlayer
-end
+end)
 
--- RenderStepped xử lý hoạt họa di chuyển vòng FOV và bám tâm mục tiêu theo thời gian thực
-RunService.RenderStepped:Connect(function()
-    local mousePos = UserInputService:GetMouseLocation()
-    FOVCircle.Position = mousePos
-
-    -- Chỉ hoạt động khi nút AIMBOT trên Menu bật VÀ đang GIỮ CHUỘT PHẢI
-    if aimbotEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local target = getClosestEnemyInFOV()
-        if target and target.Character and target.Character:FindFirstChild("Head") then
-            local targetPos = target.Character.Head.Position
-            -- Cơ chế Lerp tạo độ mượt (Smoothing) giúp tâm ngắm di chuyển tự nhiên giống người thật hơn
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, targetPos), smoothing)
-        end
-    end
+-- Dọn sạch khi có người chơi rời trận hoặc hồi sinh đổi nhân vật
+Players.PlayerRemoving:Connect(function(player)
+    if player.Character then cleanESP(player.Character) end
 end)
